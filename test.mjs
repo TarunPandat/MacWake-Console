@@ -1,0 +1,43 @@
+// node test.mjs -- exercises lib/logic.js against an in-memory store, no server needed.
+import { authed, handle } from "./lib/logic.js";
+const mem = new Map();
+const kv = { get: async k => mem.get(k) ?? null, put: async (k, v) => { mem.set(k, v); } };
+const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
+const call = async (action, body) => (await handle(action, body || {}, kv)).body;
+
+import { register } from "./lib/logic.js";
+eq(await authed("Bearer s3cret", "s3cret", kv), true, "admin token");
+eq(await authed("Bearer wrong", "s3cret", kv), false, "bad token");
+eq(await authed("", "s3cret", kv), false, "no header");
+eq(await authed("Bearer x", "", kv), false, "nothing configured");
+const T1 = "a".repeat(48), T2 = "b".repeat(48);
+eq((await register("Bearer short", kv)).status, 400, "short token rejected");
+eq(await authed("Bearer " + T1, "", kv), false, "unpaired token rejected");
+eq((await register("Bearer " + T1, kv)).status, 201, "first pairing");
+eq((await register("Bearer " + T1, kv)).status, 200, "same token re-pairs");
+eq((await register("Bearer " + T2, kv)).status, 409, "other token refused");
+eq(await authed("Bearer " + T1, "", kv), true, "paired token accepted");
+eq(await authed("Bearer " + T2, "", kv), false, "other token rejected");
+eq(await authed("Bearer s3cret", "s3cret", kv), true, "admin token still works when paired");
+eq((await handle("nope", {}, kv)).status, 404, "unknown action");
+
+let s = await call("state"); eq(s.phase, "idle", "initial idle");
+let hb = await call("heartbeat", { ac: true, battery: 80, host: "mbp" }); eq(hb.wake, false, "no wake pending");
+s = await call("wake"); eq(s.phase, "requested", "requested");
+hb = await call("heartbeat", { ac: true, battery: 80, host: "mbp" }); eq([hb.wake, hb.hold], [true, true], "mac told to wake once");
+hb = await call("heartbeat", { ac: true, holding: true, host: "mbp" }); eq([hb.wake, hb.hold], [false, true], "already acked, still hold");
+s = await call("state"); eq(s.phase, "awake", "awake after ack");
+hb = await call("heartbeat", { ac: true, holding: false, host: "mbp" }); eq([hb.wake, hb.hold], [true, true], "hold dropped inside window: re-delivered");
+hb = await call("heartbeat", { ac: true, holding: true, host: "mbp" }); eq(hb.wake, false, "holding again");
+mem.set("device", JSON.stringify({ ...JSON.parse(mem.get("device")), holding: false, ackAt: Date.now() - 31 * 60e3 }));
+hb = await call("heartbeat", { ac: true, holding: false, host: "mbp" }); eq(hb.wake, false, "hold window over: no re-delivery");
+s = await call("state"); eq(s.phase, "done", "done after hold expired");
+s = await call("wake"); eq(s.phase, "requested", "wake again from done");
+hb = await call("heartbeat", { ac: true, holding: false, host: "mbp" }); eq(hb.wake, true, "second wake delivered");
+s = await call("cancel"); eq(s.phase, "idle", "released");
+hb = await call("heartbeat", { ac: false, holding: false, host: "mbp" }); eq(hb.hold, false, "mac told to stop holding");
+s = await call("wake"); s = await call("cancel"); eq(s.phase, "idle", "cancel before ack");
+hb = await call("heartbeat", { host: "mbp" }); eq(hb.wake, false, "cancelled request not delivered");
+s = await call("settings", { interval: 999, hold: "x" }); eq(s.settings, { interval: 240, hold: 30 }, "settings clamp");
+hb = await call("heartbeat", { host: "mbp" }); eq([hb.interval, hb.holdMinutes], [240, 30], "settings reach mac");
+console.log("ok");

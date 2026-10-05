@@ -1,0 +1,116 @@
+/* Night at home: indigo dark, dawn light. One loud element: the sleep light. */
+:root {
+  --bg: #eceef6;
+  --ink: #1b1d38;
+  --soft: #5d6185;
+  --line: #d3d6e6;
+  --raise: #ffffff;
+  --accent: #3b3f8c;      /* primary button */
+  --on-accent: #ffffff;
+  --awake: #138a6e;
+  --pending: #b9741c;
+  --led: #fff7e8;
+  --err: #b42318;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12142b;
+    --ink: #e9e7f3;
+    --soft: #9a9cc0;
+    --line: #262a52;
+    --raise: #1b1e3d;
+    --accent: #e9e7f3;
+    --on-accent: #12142b;
+    --awake: #5bd6b5;
+    --pending: #f2b45a;
+    --err: #ff8a7a;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font), system-ui, sans-serif; font-size: 17px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--awake); outline-offset: 3px; border-radius: 6px; }
+
+.shell {
+  max-width: 440px; margin: 0 auto; min-height: 100dvh;
+  display: flex; flex-direction: column;
+  padding: calc(env(safe-area-inset-top) + 12px) 22px calc(env(safe-area-inset-bottom) + 16px);
+}
+
+.top { display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
+.brand { font-weight: 600; letter-spacing: -0.01em; color: var(--soft); }
+.link { background: none; border: 0; padding: 10px 0; color: var(--soft); cursor: pointer; }
+.link:hover { color: var(--ink); }
+.link.center { display: block; margin: 0 auto 6px; }
+
+/* Hero: the sleep light and the status word. */
+.hero { padding: 9vh 0 28px; }
+.hero h1 {
+  font-size: clamp(3.4rem, 17vw, 4.6rem); line-height: 0.95; letter-spacing: -0.045em;
+  font-weight: 650; margin: 30px 0 14px;
+}
+.line { margin: 0; color: var(--soft); max-width: 32ch; font-size: 1.06rem; }
+
+.led { width: 46px; height: 13px; border-radius: 99px; position: relative; background: color-mix(in srgb, var(--soft) 30%, transparent); }
+.led span { position: absolute; inset: 0; border-radius: inherit; }
+.led-sleep span { background: var(--led); box-shadow: 0 0 18px 4px color-mix(in srgb, var(--led) 60%, transparent); animation: breathe 5s ease-in-out infinite; }
+.led-pending span { background: var(--pending); box-shadow: 0 0 18px 4px color-mix(in srgb, var(--pending) 55%, transparent); animation: blink 1.1s ease-in-out infinite; }
+.led-awake span { background: var(--awake); box-shadow: 0 0 22px 6px color-mix(in srgb, var(--awake) 45%, transparent); }
+@media (prefers-color-scheme: light) { .led-sleep span { background: #8a8fd6; box-shadow: 0 0 16px 3px #8a8fd680; } }
+/* Apple's sleep light breathes about 12 times a minute. */
+@keyframes breathe { 0%, 100% { opacity: 0.12; } 45%, 55% { opacity: 1; } }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+.facts { margin: 0; border-top: 1px solid var(--line); }
+.facts div { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.facts dt { color: var(--soft); }
+.facts dd { margin: 0; font-weight: 550; text-align: right; font-variant-numeric: tabular-nums; }
+.facts .host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.soft { color: var(--soft); font-weight: 400; }
+
+.note { margin: 18px 0 0; padding-left: 12px; border-left: 3px solid var(--pending); color: var(--ink); font-size: 0.95rem; }
+.err { margin: 16px 0 0; color: var(--err); font-size: 0.95rem; }
+
+.timing { margin-top: 22px; }
+.timing summary { cursor: pointer; color: var(--soft); padding: 8px 0; list-style: none; }
+.timing summary::-webkit-details-marker { display: none; }
+.timing summary::after { content: " +"; }
+.timing[open] summary::after { content: " −"; }
+.timing form { padding: 6px 0 4px; }
+.timing label { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+.field { display: inline-flex; align-items: center; gap: 8px; color: var(--soft); }
+.field input {
+  width: 4.2em; text-align: right; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--raise); font-variant-numeric: tabular-nums;
+}
+.help { margin: -2px 0 6px; color: var(--soft); font-size: 0.88rem; }
+.save { margin-top: 10px; background: none; border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; cursor: pointer; }
+
+/* The thumb zone. */
+.dock { margin-top: auto; padding-top: 28px; position: sticky; bottom: 0; background: linear-gradient(to top, var(--bg) 70%, transparent); }
+.primary {
+  width: 100%; border: 0; border-radius: 999px; padding: 19px 24px; cursor: pointer;
+  background: var(--accent); color: var(--on-accent); font-size: 1.12rem; font-weight: 600; letter-spacing: -0.01em;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.primary:active:not(:disabled) { transform: scale(0.98); }
+.primary:disabled { opacity: 0.45; cursor: default; }
+.primary.quiet { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+
+.signin form { margin-top: auto; }
+.stack { display: grid; gap: 8px; margin-bottom: 14px; color: var(--soft); }
+.stack input { padding: 15px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .led span { animation: none !important; }
+  .led-sleep span { opacity: 0.7; }
+  .primary { transition: none; }
+}
