@@ -16,6 +16,10 @@ All `/api/*` need `Authorization: Bearer <token>`. The token is the one the Mac 
 
 The console is a PWA: on iPhone use Share → Add to Home Screen, on Android use Install app.
 
+**Instant wake.** Under Timing, "Instant wake on charger" is on by default. While plugged in, the Mac skips deep sleep (screen still turns off) and keeps a push connection open, so a wake arrives in about a second. Pushes go through the free relay at ntfy.sh on a topic derived from the Mac's token; a push only tells the Mac to check in, commands still come from this console. Set `NTFY_URL` to use your own ntfy server, or `NTFY_URL=off` to disable pushes. On battery the Mac falls back to timed check-ins.
+
+**Sign in by QR.** The sign-in screen has "Scan pairing code", which reads the QR from the Mac app's "Pair phone…" window (needs the https:// address for camera access).
+
 ## Deploy on Vercel (free)
 
 1. Push this folder (or the repo with **Root Directory** = `console-next`) to GitHub and import it at vercel.com.

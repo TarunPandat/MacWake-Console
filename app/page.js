@@ -41,20 +41,23 @@ export default function Page() {
       r = await fetch(`/api/${action}`, { method: body ? "POST" : "GET", headers: { Authorization: `Bearer ${tokenRef.current}`, "Content-Type": "application/json" }, body: body && JSON.stringify(body) });
     } catch { setErr("Can't reach the console. Check your connection."); return; }
     if (r.status === 401) { store.set(""); setToken(""); setS(null); setErr("That token isn't valid for this console."); return; }
-    if (!r.ok) { setErr(`The console returned an error (${r.status}). Try again.`); return; }
+    if (!r.ok) { const j = await r.json().catch(() => ({})); setErr(j.error || `The console returned an error (${r.status}). Try again.`); return; }
     const next = await r.json();
     setSkew(next.now - Date.now()); setS(next); setErr("");
-    setForm(f => f || { interval: String(next.settings.interval), hold: String(next.settings.hold) });
+    setForm(f => f || { interval: String(next.settings.interval), hold: String(next.settings.hold), instant: next.settings.instant !== false });
   }
   async function act(action, body) { setBusy(true); await call(action, body); setBusy(false); }
 
+  const phaseRef = useRef("");
   useEffect(() => {
     if (!token) return;
     call("state");
-    const t = setInterval(() => document.visibilityState === "visible" && call("state"), 8e3);
+    let t;
+    const loop = () => { t = setTimeout(async () => { if (document.visibilityState === "visible") await call("state"); loop(); }, phaseRef.current === "requested" ? 2e3 : 8e3); };
+    loop();
     const onShow = () => document.visibilityState === "visible" && call("state");
     document.addEventListener("visibilitychange", onShow);
-    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onShow); };
+    return () => { clearTimeout(t); document.removeEventListener("visibilitychange", onShow); };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (token === null) return null;
@@ -66,7 +69,9 @@ export default function Page() {
   const every = (d.ac === false ? Math.max(st.interval, 10) : st.interval) * 60e3;   // the Mac backs off to 10 min on battery
   const nextIn = d.lastSeen ? d.lastSeen + every - now : null;
   const asleep = seen > Math.max(every * 1.5, 5.5 * 60e3);   // an awake Mac only refreshes lastSeen every 5 min
-  const ph = !s ? "loading" : !d.lastSeen ? "never" : s.phase === "idle" ? (asleep ? "asleep" : "idle") : s.phase;
+  const listening = !!d.listening && !asleep;
+  const ph = !s ? "loading" : !d.lastSeen ? "never" : s.phase === "idle" ? (asleep ? "asleep" : listening ? "ready" : "idle") : s.phase;
+  phaseRef.current = s?.phase || "";
   const holdEnds = (d.ackAt || 0) + st.hold * 60e3;
   const name = (d.host || "Your Mac").replace(/\.local$/, "");
 
@@ -75,7 +80,8 @@ export default function Page() {
     never: { led: "off", title: "Not paired.", line: "Open MacWake on your Mac to connect it to this console." },
     asleep: { led: "sleep", title: "Asleep.", line: `${name} is resting and checks in every ${span(every)}.` },
     idle: { led: "awake", title: "Awake.", line: `${name} is on and checking in.` },
-    requested: { led: "pending", title: "Waking up…", line: !asleep ? "Your Mac is already on and will pick this up within a minute." : nextIn > 0 ? `Your Mac will see the request at its next check-in, in about ${span(nextIn)}.` : "Your Mac should check in any moment now." },
+    ready: { led: "ready", title: "Ready.", line: `${name} is plugged in and listening, so it wakes within seconds.` },
+    requested: { led: "pending", title: "Waking up…", line: listening ? "Sent. Your Mac should respond in a few seconds." : !asleep ? "Your Mac is already on and will pick this up within a minute." : nextIn > 0 ? `Your Mac will see the request at its next check-in, in about ${span(nextIn)}.` : "Your Mac should check in any moment now." },
     awake: { led: "awake", title: "Awake.", line: d.lid
       ? `Staying awake until ${clock(holdEnds)} with the lid closed, so the screen stays off. Screen Sharing and SSH work.`
       : `Staying awake until ${clock(holdEnds)}. Screen Sharing and SSH should work now.` },
@@ -102,7 +108,7 @@ export default function Page() {
       {d.lastSeen ? (
         <dl className="facts">
           <div><dt>Last check-in</dt><dd>{span(seen)} ago</dd></div>
-          {asleep && ph !== "awake" && nextIn != null && <div><dt>Next check-in</dt><dd>{nextIn > 0 ? `in ${span(nextIn)}` : "any moment"}</dd></div>}
+          {asleep && !d.listening && ph !== "awake" && nextIn != null && <div><dt>Next check-in</dt><dd>{nextIn > 0 ? `in ${span(nextIn)}` : "any moment"}</dd></div>}
           <div><dt>Lid</dt><dd>{d.lid ? "Closed" : "Open"}</dd></div>
           <div><dt>Power</dt><dd>{d.ac ? "On charger" : "On battery"}{d.battery != null && <span className="soft">, {d.battery}%</span>}</dd></div>
           {d.host && <div><dt>Mac</dt><dd className="host">{name}</dd></div>}
@@ -116,9 +122,14 @@ export default function Page() {
       <details className="timing">
         <summary>Timing</summary>
         {form && (
-          <form onSubmit={e => { e.preventDefault(); act("settings", { interval: +form.interval, hold: +form.hold }); }}>
+          <form onSubmit={e => { e.preventDefault(); act("settings", { interval: +form.interval, hold: +form.hold, instant: form.instant }); }}>
+            <label className="switch">
+              <span>Instant wake on charger</span>
+              <input type="checkbox" role="switch" checked={form.instant} onChange={e => setForm({ ...form, instant: e.target.checked })} />
+            </label>
+            <p className="help">While plugged in, your Mac skips deep sleep and keeps listening, so it wakes in seconds. The screen still turns off. On battery it falls back to check-ins.</p>
             <label>
-              <span>Check in every</span>
+              <span>{form.instant ? "On battery, check in every" : "Check in every"}</span>
               <span className="field"><input inputMode="numeric" type="number" min={1} max={240} value={form.interval} onChange={e => setForm({ ...form, interval: e.target.value })} />min</span>
             </label>
             <p className="help">This is the longest you wait after tapping wake. Shorter uses a little more battery.</p>
@@ -143,14 +154,66 @@ export default function Page() {
   );
 }
 
+const parseToken = text => (text.match(/token=([0-9a-f]{32,})/i) || text.trim().match(/^([0-9a-f]{32,})$/i) || [])[1];
+
+function Scanner({ onToken, onClose }) {
+  const video = useRef(null);
+  const [msg, setMsg] = useState("Point your camera at the pairing code in MacWake on your Mac.");
+  useEffect(() => {
+    let stream, raf, done = false;
+    (async () => {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setMsg("The camera needs the console's https:// address. Paste the token instead."); return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      } catch (e) {
+        setMsg(e.name === "NotAllowedError" ? "Camera access is off for this site. Allow it in your browser settings, or paste the token." : "No camera is available. Paste the token instead.");
+        return;
+      }
+      const jsQR = (await import("jsqr")).default;
+      const v = video.current; v.srcObject = stream; await v.play().catch(() => {});
+      const c = document.createElement("canvas"), g = c.getContext("2d", { willReadFrequently: true });
+      const scan = () => {
+        if (done) return;
+        if (v.readyState >= 2 && v.videoWidth) {
+          const w = 480, h = Math.round(480 * v.videoHeight / v.videoWidth);
+          c.width = w; c.height = h; g.drawImage(v, 0, 0, w, h);
+          const code = jsQR(g.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+          if (code) {
+            const t = parseToken(code.data);
+            if (t) { done = true; onToken(t); return; }
+            setMsg("That code isn't a MacWake pairing code. Use Pair phone in the MacWake menu on your Mac.");
+          }
+        }
+        raf = requestAnimationFrame(scan);
+      };
+      scan();
+    })();
+    return () => { done = true; cancelAnimationFrame(raf); stream?.getTracks().forEach(t => t.stop()); };
+  }, [onToken]);
+  return (
+    <div className="scanner" role="dialog" aria-label="Scan pairing code">
+      <video ref={video} playsInline muted />
+      <div className="finder" aria-hidden="true" />
+      <div className="scanbar">
+        <p>{msg}</p>
+        <button className="primary quiet onvideo" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function SignIn({ err, onSubmit }) {
+  const [scan, setScan] = useState(false);
   return (
     <main className="shell signin">
       <section className="hero">
         <div className="led led-sleep" aria-hidden="true"><span /></div>
         <h1>MacWake</h1>
-        <p className="line">Paste the token from the MacWake menu on your Mac, or scan its pairing code with your phone camera.</p>
+        <p className="line">Scan the pairing code from the MacWake menu on your Mac, or paste its token.</p>
       </section>
+      {scan && <Scanner onToken={t => { setScan(false); onSubmit(t); }} onClose={() => setScan(false)} />}
       <form onSubmit={e => { e.preventDefault(); const v = e.currentTarget.tok.value.trim(); if (v) onSubmit(v); }}>
         <label className="stack">
           <span>Token</span>
@@ -158,6 +221,7 @@ function SignIn({ err, onSubmit }) {
         </label>
         {err && <p className="err" role="alert">{err}</p>}
         <button className="primary">Sign in</button>
+        <button type="button" className="primary quiet scanbtn" onClick={() => setScan(true)}>Scan pairing code</button>
       </form>
     </main>
   );

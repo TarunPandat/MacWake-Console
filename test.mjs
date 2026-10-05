@@ -38,6 +38,23 @@ s = await call("cancel"); eq(s.phase, "idle", "released");
 hb = await call("heartbeat", { ac: false, holding: false, host: "mbp" }); eq(hb.hold, false, "mac told to stop holding");
 s = await call("wake"); s = await call("cancel"); eq(s.phase, "idle", "cancel before ack");
 hb = await call("heartbeat", { host: "mbp" }); eq(hb.wake, false, "cancelled request not delivered");
-s = await call("settings", { interval: 999, hold: "x" }); eq(s.settings, { interval: 240, hold: 30 }, "settings clamp");
+s = await call("settings", { interval: 999, hold: "x" }); eq(s.settings, { interval: 240, hold: 30, instant: true }, "settings clamp, instant on by default");
+s = await call("settings", { instant: false }); eq(s.settings.instant, false, "instant can be turned off");
+hb = await call("heartbeat", { host: "mbp", listening: true }); eq(hb.instant, false, "mode reaches mac");
+eq(JSON.parse(mem.get("device")).listening, true, "listening recorded");
 hb = await call("heartbeat", { host: "mbp" }); eq([hb.interval, hb.holdMinutes], [240, 30], "settings reach mac");
 console.log("ok");
+
+// Push nudge: wake posts to the paired Mac's topic on the relay.
+import http from "node:http";
+import { createHash } from "node:crypto";
+import { topicFor } from "./lib/logic.js";
+const got = [];
+const srv = http.createServer((req, res) => { got.push(req.url); res.end("ok"); }).listen(0);
+await new Promise(r => srv.once("listening", r));
+const push = `http://127.0.0.1:${srv.address().port}`;
+await handle("wake", {}, kv, Date.now(), { push });
+srv.close();
+const want = "/" + topicFor(createHash("sha256").update(T1).digest("hex"));
+eq(got, [want], "wake pushed to the paired Mac's topic");
+console.log("push ok");
