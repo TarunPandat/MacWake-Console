@@ -7,7 +7,9 @@ export const metadata = {
   title: "MacWake",
   description: "Wake your Mac at home from anywhere.",
   appleWebApp: { capable: true, title: "MacWake", statusBarStyle: "black-translucent" },
-  icons: { apple: "/apple-touch-icon.png" },
+  // Next now emits only the standard mobile-web-app-capable; iOS Web Clips (the website's iPhone
+  // install profile) still need Apple's tag to open full screen instead of inside Safari.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport = {
