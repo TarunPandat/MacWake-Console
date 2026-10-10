@@ -1,24 +1,46 @@
 // node test.mjs -- exercises lib/logic.js against an in-memory store, no server needed.
-import { authed, handle } from "./lib/logic.js";
+import { account, handle, register, topicFor } from "./lib/logic.js";
+import { createHash } from "node:crypto";
 const mem = new Map();
 const kv = { get: async k => mem.get(k) ?? null, put: async (k, v) => { mem.set(k, v); } };
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
 const call = async (action, body) => (await handle(action, body || {}, kv)).body;
 
-import { register } from "./lib/logic.js";
-eq(await authed("Bearer s3cret", "s3cret", kv), true, "admin token");
-eq(await authed("Bearer wrong", "s3cret", kv), false, "bad token");
-eq(await authed("", "s3cret", kv), false, "no header");
-eq(await authed("Bearer x", "", kv), false, "nothing configured");
-const T1 = "a".repeat(48), T2 = "b".repeat(48);
-eq((await register("Bearer short", kv)).status, 400, "short token rejected");
-eq(await authed("Bearer " + T1, "", kv), false, "unpaired token rejected");
-eq((await register("Bearer " + T1, kv)).status, 201, "first pairing");
-eq((await register("Bearer " + T1, kv)).status, 200, "same token re-pairs");
-eq((await register("Bearer " + T2, kv)).status, 409, "other token refused");
-eq(await authed("Bearer " + T1, "", kv), true, "paired token accepted");
-eq(await authed("Bearer " + T2, "", kv), false, "other token rejected");
-eq(await authed("Bearer s3cret", "s3cret", kv), true, "admin token still works when paired");
+const sha = t => createHash("sha256").update(t).digest("hex");
+const B = t => "Bearer " + t;
+const T1 = "a".repeat(48), T2 = "b".repeat(48), OLD = "c".repeat(48);
+
+// Every Mac registers its own token; none is refused.
+eq((await register("Bearer short", "", kv)).status, 400, "short token rejected");
+eq((await register(B("z".repeat(48)), "", kv)).status, 400, "non-hex token rejected");
+eq(await account(B(T1), "", kv), null, "unregistered token rejected");
+eq((await register(B(T1), "", kv)).status, 201, "first Mac pairs");
+eq((await register(B(T1), "", kv)).status, 200, "same Mac re-pairs");
+eq((await register(B(T2), "", kv, { mac: "2".repeat(64) })).status, 201, "second Mac pairs too");
+eq((await register(B(T2), "", kv, { mac: "2".repeat(64) })).status, 200, "same Mac re-pairs with its id");
+eq((await register(B(T2), "", kv, { mac: "3".repeat(64) })).status, 409, "a copied token is refused on another Mac");
+eq((await register(B(T1), "", kv, { mac: "4".repeat(64) })).status, 200, "a token registered without an id binds to the first Mac that sends one");
+eq((await register(B(T1), "", kv, { mac: "5".repeat(64) })).status, 409, "then stays with it");
+eq((await register(B(T1), "", kv, { mac: "not hex" })).status, 200, "a malformed id is ignored");
+eq(await account("", "", kv), null, "no header");
+eq(await account(B("f".repeat(48)), "", kv), null, "unknown token rejected");
+const m1 = await account(B(T1), "", kv), m2 = await account(B(T2), "", kv);
+eq([m1.hashes, m2.hashes], [[sha(T1)], [sha(T2)]], "each Mac pushes to its own topic");
+await handle("wake", {}, m1.kv);
+eq([(await handle("state", {}, m1.kv)).body.phase, (await handle("state", {}, m2.kv)).body.phase], ["requested", "idle"], "Macs don't see each other's state");
+eq((await handle("heartbeat", {}, m2.kv)).body.wake, false, "other Mac not woken");
+
+// A console from before multi-Mac: one Mac under bare keys, opened by its token or ADMIN_TOKEN.
+const old = new Map([["owner", sha(OLD)], ["settings", JSON.stringify({ interval: 7, hold: 30, instant: true })]]);
+const okv = { get: async k => old.get(k) ?? null, put: async (k, v) => { old.set(k, v); } };
+const M1 = "1".repeat(64), M2 = "2".repeat(64);
+eq((await register(B(OLD), "", okv, { mac: M1 })).status, 409, "the old shared token is never a Mac's own: setting up again makes one");
+eq((await register(B(OLD), "", okv)).status, 409, "also for apps that send no id");
+eq((await register(B("s3cret"), "s3cret", okv, { mac: M2 })).status, 409, "same for ADMIN_TOKEN");
+eq((await handle("state", {}, (await account(B(OLD), "", okv)).kv)).body.settings.interval, 7, "old Mac keeps its data");
+eq((await account(B("s3cret"), "s3cret", okv)).hashes, [sha(OLD), sha("s3cret")], "admin token opens the old Mac");
+eq(await account(B("s3cret"), "", okv), null, "admin token needs ADMIN_TOKEN set");
+eq((await register(B(T1), "", okv)).status, 201, "new Macs still pair on an old console");
 eq((await handle("nope", {}, kv)).status, 404, "unknown action");
 
 let s = await call("state"); eq(s.phase, "idle", "initial idle");
@@ -45,16 +67,13 @@ eq(JSON.parse(mem.get("device")).listening, true, "listening recorded");
 hb = await call("heartbeat", { host: "mbp" }); eq([hb.interval, hb.holdMinutes], [240, 30], "settings reach mac");
 console.log("ok");
 
-// Push nudge: wake posts to the paired Mac's topic on the relay.
+// Push nudge: wake posts to that Mac's topic on the relay.
 import http from "node:http";
-import { createHash } from "node:crypto";
-import { topicFor } from "./lib/logic.js";
 const got = [];
 const srv = http.createServer((req, res) => { got.push(req.url); res.end("ok"); }).listen(0);
 await new Promise(r => srv.once("listening", r));
 const push = `http://127.0.0.1:${srv.address().port}`;
-await handle("wake", {}, kv, Date.now(), { push });
+await handle("wake", {}, m1.kv, Date.now(), { push, hashes: m1.hashes });
 srv.close();
-const want = "/" + topicFor(createHash("sha256").update(T1).digest("hex"));
-eq(got, [want], "wake pushed to the paired Mac's topic");
+eq(got, ["/" + topicFor(sha(T1))], "wake pushed to that Mac's topic only");
 console.log("push ok");

@@ -10,9 +10,9 @@ Worker in `../console`; pick one.
 | `POST /api/wake`, `/api/cancel` | console | request / cancel a wake |
 | `POST /api/settings` `{interval, hold}` | console | minutes |
 | `POST /api/heartbeat` | Mac | check-in; reply tells it whether to wake / keep holding |
-| `POST /api/register` | Mac app | first-run pairing: stores the hash of the Mac's own token |
+| `POST /api/register` | Mac app | first-run pairing: creates this Mac's account from its own token |
 
-All `/api/*` need `Authorization: Bearer <token>`. The token is the one the Mac app created and paired, or `ADMIN_TOKEN` if you set one. `ADMIN_TOKEN` is optional now.
+All `/api/*` need `Authorization: Bearer <token>`. Every Mac app creates its own random token and registers it, so any number of Macs can use one console; each token only sees its own Mac. The phone signs in with that Mac's token (QR or paste). `ADMIN_TOKEN` is optional and only opens the single Mac of a console set up before multi-Mac support.
 
 The console is a PWA: on iPhone use Share → Add to Home Screen, on Android use Install app.
 
@@ -27,15 +27,15 @@ The console is a PWA: on iPhone use Share → Add to Home Screen, on Android use
 3. Deploy. Your console is `https://<project>.vercel.app`.
 4. Build the Mac app with `CONSOLE_URL=https://<project>.vercel.app sh ../mac/build.sh` and install it. It pairs itself and shows a QR code; scan it with your phone.
 
-Pair the Mac right after deploying: the first Mac to register owns the console.
+Any Mac with the app can pair with the console; there is no owner or admin token to share.
 
-CLI alternative: `npx vercel` in this folder, then `npx vercel env add ADMIN_TOKEN`, link storage in the dashboard, `npx vercel --prod`.
+CLI alternative: `npx vercel` in this folder, link storage in the dashboard, `npx vercel --prod`.
 
 ## Local
 
 ```bash
 npm install
-cp .env.example .env.local   # set ADMIN_TOKEN
+cp .env.example .env.local   # optional
 npm run dev                  # http://localhost:3000, state in .data/state.json
 npm test                     # logic tests, no server needed
 ```
