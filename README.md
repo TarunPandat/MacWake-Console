@@ -11,12 +11,15 @@ Worker in `../console`; pick one.
 | `POST /api/settings` `{interval, hold}` | console | minutes |
 | `POST /api/heartbeat` | Mac | check-in; reply tells it whether to wake / keep holding |
 | `POST /api/register` | Mac app | first-run pairing: creates this Mac's account from its own token |
+| `GET/POST /api/screen` | console, Mac app | live screen signaling: a viewer posts a WebRTC offer, the Mac's menu-bar app answers |
 
 All `/api/*` need `Authorization: Bearer <token>`. Every Mac app creates its own random token and registers it, so any number of Macs can use one console; each token only sees its own Mac. The phone signs in with that Mac's token (QR or paste). `ADMIN_TOKEN` is optional and only opens the single Mac of a console set up before multi-Mac support.
 
 The console is a PWA: on iPhone use Share → Add to Home Screen, on Android use Install app.
 
 **Instant wake.** Under Timing, "Instant wake on charger" is on by default. While plugged in, the Mac skips deep sleep (screen still turns off) and keeps a push connection open, so a wake arrives in about a second. Pushes go through the free relay at ntfy.sh on a topic derived from the Mac's token; a push only tells the Mac to check in, commands still come from this console. Set `NTFY_URL` to use your own ntfy server, or `NTFY_URL=off` to disable pushes. On battery the Mac falls back to timed check-ins.
+
+**Live screen.** "Watch screen" shows the Mac's screen live (view-only). The console only relays one WebRTC offer and one answer per session; the video goes straight from the Mac to your phone, encrypted. Direct connections use free public STUN and work on most Wi-Fi. If a network (some cellular carriers) can't connect directly, set `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL` from a free TURN account such as Metered Open Relay. The Mac needs MacWake's menu-bar app running and Screen Recording allowed.
 
 **Sign in by QR.** The sign-in screen has "Scan pairing code", which reads the QR from the Mac app's "Pair phone…" window (needs the https:// address for camera access).
 

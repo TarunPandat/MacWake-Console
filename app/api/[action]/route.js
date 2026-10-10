@@ -1,4 +1,4 @@
-import { account, handle, register } from "../../../lib/logic.js";
+import { account, handle, iceServers, register } from "../../../lib/logic.js";
 import { kv } from "../../../lib/store.js";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ async function run(req, { params }) {
   if (!acct) return Response.json({ error: "unauthorized" }, { status: 401 });
   const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
   const push = process.env.NTFY_URL === "off" ? null : (process.env.NTFY_URL || "https://ntfy.sh").replace(/\/+$/, "");
-  const { status, body: out } = await handle(action, body, acct.kv, Date.now(), { push, hashes: acct.hashes });
+  const { status, body: out } = await handle(action, body, acct.kv, Date.now(), { push, hashes: acct.hashes, ice: iceServers(process.env) });
   return Response.json(out, { status });
 }
 

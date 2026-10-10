@@ -1,5 +1,5 @@
 // node test.mjs -- exercises lib/logic.js against an in-memory store, no server needed.
-import { account, handle, register, topicFor } from "./lib/logic.js";
+import { account, handle, iceServers, OFFER_TTL, register, topicFor } from "./lib/logic.js";
 import { createHash } from "node:crypto";
 const mem = new Map();
 const kv = { get: async k => mem.get(k) ?? null, put: async (k, v) => { mem.set(k, v); } };
@@ -65,6 +65,33 @@ s = await call("settings", { instant: false }); eq(s.settings.instant, false, "i
 hb = await call("heartbeat", { host: "mbp", listening: true }); eq(hb.instant, false, "mode reaches mac");
 eq(JSON.parse(mem.get("device")).listening, true, "listening recorded");
 hb = await call("heartbeat", { host: "mbp" }); eq([hb.interval, hb.holdMinutes], [240, 30], "settings reach mac");
+
+// Live screen signaling: the viewer writes the offer, the Mac writes the answer; nothing leaks across Macs.
+const ID = "ab".repeat(16), ID2 = "cd".repeat(16), ICE = [{ urls: ["stun:example"] }];
+const scr = (body, now = Date.now()) => handle("screen", body, m1.kv, now, { ice: ICE });
+const noAt = o => o && Object.fromEntries(Object.entries(o).filter(([k]) => k !== "at"));
+eq((await scr({})).body, { ice: ICE, push: null, offer: null, answer: null }, "nothing pending");
+eq((await scr({ id: ID, offer: "v=0 offer" })).body, { ok: true, ice: ICE }, "viewer posts an offer and gets the ICE servers");
+eq(noAt((await scr({})).body.offer), { id: ID, sdp: "v=0 offer" }, "Mac reads the offer");
+eq((await scr({ id: ID, answer: "v=0 answer" })).body, { ok: true }, "Mac answers");
+eq(noAt((await scr({})).body.answer), { id: ID, sdp: "v=0 answer" }, "viewer reads the answer");
+eq((await scr({ id: ID2, error: "permission" })).status, 200, "Mac can refuse with a known code");
+eq(noAt((await scr({})).body.answer), { id: ID2, error: "permission" }, "a refusal replaces the answer");
+eq((await scr({}, Date.now() + OFFER_TTL + 1e3)).body.offer, null, "offers expire after 60 s");
+eq((await handle("screen", {}, m2.kv, Date.now(), {})).body.offer, null, "another Mac never sees the offer");
+for (const [body, why] of [
+  [{ id: "xyz", offer: "v=0" }, "id must be hex"],
+  [{ id: "ab", offer: "v=0" }, "id too short"],
+  [{ offer: "v=0" }, "id missing"],
+  [{ id: ID, offer: "" }, "empty offer"],
+  [{ id: ID, offer: "x".repeat(20001) }, "offer over 20000 chars"],
+  [{ id: ID, answer: 5 }, "answer must be text"],
+  [{ id: ID, error: "boom" }, "unknown error code"],
+  [{ id: ID, offer: "v=0", answer: "v=0" }, "offer and answer together"],
+]) eq((await scr(body)).status, 400, why);
+eq(iceServers({}), [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }], "free STUN only by default");
+eq(iceServers({ TURN_URLS: "turn:relay:80, turns:relay:443", TURN_USERNAME: "u", TURN_CREDENTIAL: "p" })[1],
+  { urls: ["turn:relay:80", "turns:relay:443"], username: "u", credential: "p" }, "TURN from env");
 console.log("ok");
 
 // Push nudge: wake posts to that Mac's topic on the relay.
@@ -74,6 +101,7 @@ const srv = http.createServer((req, res) => { got.push(req.url); res.end("ok"); 
 await new Promise(r => srv.once("listening", r));
 const push = `http://127.0.0.1:${srv.address().port}`;
 await handle("wake", {}, m1.kv, Date.now(), { push, hashes: m1.hashes });
+await handle("screen", { id: "ab".repeat(16), offer: "v=0" }, m1.kv, Date.now(), { push, hashes: m1.hashes });
 srv.close();
-eq(got, ["/" + topicFor(sha(T1))], "wake pushed to that Mac's topic only");
+eq(got, ["/" + topicFor(sha(T1)), "/" + topicFor(sha(T1)) + "-screen"], "wake pushes the daemon's topic, an offer the menu-bar app's");
 console.log("push ok");
