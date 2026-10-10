@@ -105,3 +105,17 @@ await handle("screen", { id: "ab".repeat(16), offer: "v=0" }, m1.kv, Date.now(),
 srv.close();
 eq(got, ["/" + topicFor(sha(T1)), "/" + topicFor(sha(T1)) + "-screen"], "wake pushes the daemon's topic, an offer the menu-bar app's");
 console.log("push ok");
+
+// Viewer decisions (mirrored in mobile/src/core.ts).
+const { afterPoll, needsWake, newId, SCREEN_MESSAGES } = await import("./lib/screen.js");
+eq(afterPoll(null, "a", 1000, "awake"), { kind: "wait" }, "no answer yet");
+eq(afterPoll({ id: "b", sdp: "x", at: 0 }, "a", 1000, "awake"), { kind: "wait" }, "an answer to another offer is ignored");
+eq(afterPoll({ id: "a", sdp: "x", at: 0 }, "a", 1000, "awake"), { kind: "answer", sdp: "x" }, "answer");
+eq(afterPoll({ id: "a", error: "permission", at: 0 }, "a", 1000, "awake"), { kind: "error", error: "permission" }, "Mac refused");
+eq(afterPoll({ id: "a", error: "weird", at: 0 }, "a", 1000, "awake"), { kind: "error", error: "failed" }, "unknown code reads as failed");
+eq(afterPoll(null, "a", 20000, "requested"), { kind: "reoffer" }, "Mac still waking: offer again");
+eq(afterPoll(null, "a", 20000, "awake"), { kind: "error", error: "timeout" }, "awake but silent");
+eq(["idle", "done", "awake", "requested", undefined].map(needsWake), [true, true, false, false, true], "when watching also wakes");
+eq(/^[0-9a-f]{32}$/.test(newId()) && newId() !== newId(), true, "offer ids are 32 hex and differ");
+eq(Object.keys(SCREEN_MESSAGES).sort(), ["disabled", "failed", "ice", "lost", "no-display", "permission", "timeout"], "every error has text");
+console.log("viewer ok");
