@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Viewer from "./Viewer";
 
 const TOKEN_KEY = "tok";
 const store = {
@@ -21,6 +22,7 @@ export default function Page() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(null);
+  const [watching, setWatching] = useState(false);
   const [, tick] = useState(0);
   const tokenRef = useRef("");
 
@@ -149,7 +151,9 @@ export default function Page() {
         <button className={`primary${primary.quiet ? " quiet" : ""}`} disabled={busy || primary.disabled} onClick={() => primary.action && act(primary.action)}>
           {primary.label}
         </button>
+        <button className="primary quiet watch" disabled={ph === "never" || ph === "loading"} onClick={() => setWatching(true)}>Watch screen</button>
       </footer>
+      {watching && <Viewer token={token} onClose={() => { setWatching(false); call("state"); }} />}
     </main>
   );
 }
