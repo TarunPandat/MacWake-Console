@@ -105,8 +105,8 @@ export default function Viewer({ token, onClose }) {
 
   const note = live && control && control !== "ok" ? CONTROL_MESSAGES[control] || "" : "";
   const msg = error || (locked && live ? "Mac is locked" : status) || note;
-  // Once the picture is up, the Close bar fades after 3 s. A mouse brings it back by moving (while controlling: near
-  // the bottom edge, so the Dock stays reachable); touch screens use the ••• button.
+  // Once the picture is up, the Close bar fades after 3 s. A mouse brings it back by moving, except while controlling
+  // (the bar would cover the Dock); then, and on touch screens, the corner ••• button does.
   const [bar, setBar] = useState(true);
   const hide = useRef();
   const showBar = () => { setBar(true); clearTimeout(hide.current); hide.current = setTimeout(() => setBar(false), 3000); };
@@ -117,7 +117,7 @@ export default function Viewer({ token, onClose }) {
   const keep = e => e.preventDefault();   // the Keys button must not take focus from the phone keyboard
   return (
     <div className="viewer" role="dialog" aria-label="Mac screen"
-      onPointerMove={e => { if (e.pointerType === "mouse" && live && !msg && (!ok || e.clientY > innerHeight - 90)) showBar(); }}>
+      onPointerMove={e => { if (e.pointerType === "mouse" && live && !msg && !ok) showBar(); }}>
       <video ref={el => { video.current = el; pic.ref.current = el; }} className={ok ? "control" : undefined} autoPlay playsInline muted
         aria-describedby={ok ? "viewer-hint" : undefined} {...pic.handlers} />
       {ok && <p id="viewer-hint" className="sr-only">Mouse and keys go to the Mac. Shift+Escape moves to the Close button.</p>}
@@ -138,7 +138,7 @@ export default function Viewer({ token, onClose }) {
         )}
         <button ref={close} className="primary quiet onvideo" onClick={onClose}>Close</button>
       </div>
-      {touch && !bar && <button className="viewer-more" aria-label="Show controls" onClick={showBar}>•••</button>}
+      {(touch || ok) && !bar && <button className="viewer-more" aria-label="Show controls" onClick={showBar}>•••</button>}
     </div>
   );
 }

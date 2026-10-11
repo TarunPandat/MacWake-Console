@@ -25,7 +25,10 @@ export function usePicture(mode, size, send, enabled) {
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  // A mode change, control turning off or the viewer closing mid-gesture: let go, so the next touch starts fresh.
+  const reset = () => { clearTimeout(timer.current); setRing(null); latest.current.send(g.cancel()); };
+  useEffect(() => reset, [g]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!enabled) reset(); }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const at = e => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -54,7 +57,9 @@ export function usePicture(mode, size, send, enabled) {
       const { enabled, send, size } = latest.current;
       if (!enabled) return;
       const [x, y] = at(e);
-      send(e.pointerType === "mouse" ? [{ m: fraction(x, y, box.current, size).at }] : g.move(e.pointerId, x, y, performance.now()));
+      if (e.pointerType !== "mouse") return send(g.move(e.pointerId, x, y, performance.now()));
+      const f = fraction(x, y, box.current, size);
+      if (f.inside || e.buttons) send([{ m: f.at }]);   // hovering the black bars must not pin the pointer to an edge (Hot Corners)
     },
     onPointerUp: e => {
       const { enabled, send, size } = latest.current;
