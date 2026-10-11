@@ -21,6 +21,10 @@ The console is a PWA: on iPhone use Share → Add to Home Screen, on Android use
 
 **Live screen.** "Watch screen" shows the Mac's screen live (view-only). The console only relays one WebRTC offer and one answer per session; the video goes straight from the Mac to your phone, encrypted. Direct connections use free public STUN and work on most Wi-Fi. If a network (some cellular carriers) can't connect directly, set `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL` from a free TURN account such as Metered Open Relay. The Mac needs MacWake's menu-bar app running and Screen Recording allowed.
 
+**Remote control.** While watching, mouse, touch and keys go to the Mac over the same encrypted connection (never
+through this server). The Mac needs Accessibility allowed for MacWake and "Allow remote control" on in its menu.
+Viewer logic lives in `lib/control.js` (mirrored in `mobile/src/control.ts`), the UI in `app/Controls.js`.
+
 **Sign in by QR.** The sign-in screen has "Scan pairing code", which reads the QR from the Mac app's "Pair phone…" window (needs the https:// address for camera access).
 
 ## Deploy on Vercel (free)
