@@ -22,6 +22,8 @@ export default function Viewer({ token, onClose }) {
   const dc = useRef(null);
   const input = useRef(null);
   const close = useRef(null);
+  const root = useRef(null);
+  const [full, setFull] = useState(false);
   const [status, setStatus] = useState("Connecting…");
   const [error, setError] = useState("");
   const [locked, setLocked] = useState(false);
@@ -95,12 +97,27 @@ export default function Viewer({ token, onClose }) {
   const ok = live && !error && control === "ok";
   const pic = usePicture(mode, size, send, ok);
   const keys = useKeys(send);
-  useKeyboard(ok, send, input, () => close.current?.focus());
+  useKeyboard(ok, keys, input, () => close.current?.focus());
+  // Full screen with the keyboard locked (Chrome, Edge): ⌘W, ⌘T, ⌘N and other browser shortcuts reach the Mac.
+  const canFull = useMemo(() => !touch && document.fullscreenEnabled, [touch]);
+  useEffect(() => {
+    const change = () => {
+      const on = document.fullscreenElement === root.current;
+      setFull(on);
+      if (on) navigator.keyboard?.lock?.().catch(() => {}); else navigator.keyboard?.unlock?.();
+    };
+    document.addEventListener("fullscreenchange", change);
+    return () => {
+      document.removeEventListener("fullscreenchange", change);
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+  const toggleFull = () => (full ? document.exitFullscreen() : root.current?.requestFullscreen())?.catch?.(() => {});
   const kb = useKeyboardInset();
   useEffect(() => { if (!ok) setTyping(false); }, [ok]);
   const toggleTyping = () => {
     if (typing) { setTyping(false); input.current?.blur(); }
-    else { setTyping(true); input.current?.focus(); }
+    else { setTyping(true); input.current?.focus(); }   // no input on computers: the row alone, for its sticky ⌘ ⌥ ⌃ ⇧
   };
 
   const note = live && control && control !== "ok" ? CONTROL_MESSAGES[control] || "" : "";
@@ -116,11 +133,11 @@ export default function Viewer({ token, onClose }) {
   }, [live, msg]); // eslint-disable-line react-hooks/exhaustive-deps
   const keep = e => e.preventDefault();   // the Keys button must not take focus from the phone keyboard
   return (
-    <div className="viewer" role="dialog" aria-label="Mac screen"
+    <div ref={root} className="viewer" role="dialog" aria-label="Mac screen"
       onPointerMove={e => { if (e.pointerType === "mouse" && live && !msg && !ok) showBar(); }}>
       <video ref={el => { video.current = el; pic.ref.current = el; }} className={ok ? "control" : undefined} autoPlay playsInline muted
         aria-describedby={ok ? "viewer-hint" : undefined} {...pic.handlers} />
-      {ok && <p id="viewer-hint" className="sr-only">Mouse and keys go to the Mac. Shift+Escape moves to the Close button.</p>}
+      {ok && <p id="viewer-hint" className="sr-only">Mouse and keys go to the Mac. Shift+Escape moves to the Close button. Keys shows ⌘ ⌥ ⌃ ⇧ buttons that apply to the next key you press.</p>}
       {pic.ring && <span className="viewer-ring" style={{ left: pic.ring.x, top: pic.ring.y }} />}
       {msg && <p className="viewer-msg" role="status">{msg}</p>}
       {ok && touch && <Typing ref={input} keys={keys} onBlur={() => setTyping(false)} />}
@@ -133,8 +150,11 @@ export default function Viewer({ token, onClose }) {
             {mode === "direct" ? "Direct" : "Trackpad"}
           </button>
         )}
-        {ok && touch && (
+        {ok && (
           <button className="primary quiet onvideo" aria-pressed={typing} onPointerDown={keep} onMouseDown={keep} onClick={toggleTyping}>Keys</button>
+        )}
+        {ok && canFull && (
+          <button className="primary quiet onvideo" aria-pressed={full} onClick={toggleFull}>{full ? "Exit full screen" : "Full screen"}</button>
         )}
         <button ref={close} className="primary quiet onvideo" onClick={onClose}>Close</button>
       </div>

@@ -2,7 +2,7 @@
 // Remote control glue for the viewer: the real mouse and keyboard, touches on the picture, the phone keyboard and
 // the Mac keys row. Decisions live in lib/control.js; mirrored in mobile/src/Controls.tsx.
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { createGestures, createHeld, createKeys, edit, fraction, KEYS_ROW, LONG_PRESS, mouseButton, SENTINEL, wheel } from "../lib/control.js";
+import { createGestures, createHeld, createKeys, ctrlIsCmd, edit, fraction, KEYS_ROW, LONG_PRESS, mouseButton, SENTINEL, wheel } from "../lib/control.js";
 
 /** Pointer handlers for the picture. The mouse goes straight through; touches and pens go through the gestures. */
 export function usePicture(mode, size, send, enabled) {
@@ -84,9 +84,14 @@ export function usePicture(mode, size, send, enabled) {
   return { ref, handlers, ring };
 }
 
-/** Sticky ⌘ ⌥ ⌃ ⇧ from the keys row plus typed text; `latched` drives the row's highlight. */
+/**
+ * Sticky ⌘ ⌥ ⌃ ⇧ from the keys row, typed text, and a real keyboard's keys (which the latched modifiers apply to);
+ * `latched` drives the row's highlight.
+ */
 export function useKeys(send) {
   const keys = useMemo(createKeys, []);
+  // iPad and PC keyboards: Control stands for ⌘ (⌃C copy, ⌃W close tab); a Mac's own keyboard keeps them apart.
+  const held = useMemo(() => createHeld(keys, { ctrlAsCmd: ctrlIsCmd(navigator.platform, navigator.maxTouchPoints) }), [keys]);
   const [latched, setLatched] = useState([]);
   const after = out => { send(out); setLatched(keys.latched()); };
   return {
@@ -94,6 +99,8 @@ export function useKeys(send) {
     press: code => after(keys.press(code)),
     type: text => after(keys.type(text)),
     toggle: mod => { keys.toggle(mod); setLatched(keys.latched()); },
+    key: (code, down) => after(held.key(code, down)),
+    releaseAll: () => after(held.releaseAll()),
   };
 }
 
@@ -102,21 +109,20 @@ export function useKeys(send) {
  * viewer's buttons (so they work by keyboard); Shift+Escape calls `onEscape` instead of reaching the Mac, so keyboard
  * users can always get back to Close.
  */
-export function useKeyboard(enabled, send, skip, onEscape) {
-  const latest = useRef({ send, onEscape });
-  latest.current = { send, onEscape };
+export function useKeyboard(enabled, keys, skip, onEscape) {
+  const latest = useRef({ keys, onEscape });
+  latest.current = { keys, onEscape };
   useEffect(() => {
     if (!enabled) return;
-    const held = createHeld();
     const key = e => {
       const down = e.type === "keydown";
       if (e.target === skip.current) return;
       if (down && e.target.closest?.(".viewer-bar")) return;
       if (down && e.key === "Escape" && e.shiftKey) { e.preventDefault(); latest.current.onEscape(); return; }
       e.preventDefault();
-      latest.current.send(held.key(e.code, down));
+      latest.current.keys.key(e.code, down);
     };
-    const blur = () => latest.current.send(held.releaseAll());
+    const blur = () => latest.current.keys.releaseAll();
     addEventListener("keydown", key);
     addEventListener("keyup", key);
     addEventListener("blur", blur);
