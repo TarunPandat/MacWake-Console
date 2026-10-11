@@ -73,11 +73,19 @@ export default function Viewer({ token, onClose }) {
   }, [token, attempt]);
 
   const msg = error || (locked && live ? "Mac is locked" : status);
+  // Once the picture is up, the Close bar fades after 3 s; moving the mouse brings it back.
+  const [bar, setBar] = useState(true);
+  const hide = useRef();
+  const showBar = () => { setBar(true); clearTimeout(hide.current); hide.current = setTimeout(() => setBar(false), 3000); };
+  useEffect(() => {
+    if (live && !msg) showBar(); else { clearTimeout(hide.current); setBar(true); }
+    return () => clearTimeout(hide.current);
+  }, [live, msg]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="viewer" role="dialog" aria-label="Mac screen">
+    <div className="viewer" role="dialog" aria-label="Mac screen" onPointerMove={() => live && !msg && showBar()}>
       <video ref={video} autoPlay playsInline muted />
       {msg && <p className="viewer-msg" role="status">{msg}</p>}
-      <div className="viewer-bar">
+      <div className={`viewer-bar${bar ? "" : " hidden"}`}>
         {error && <button className="primary quiet onvideo" onClick={() => setAttempt(n => n + 1)}>Try again</button>}
         <button className="primary quiet onvideo" onClick={onClose}>Close</button>
       </div>

@@ -130,7 +130,8 @@ button, input { font: inherit; color: inherit; }
 .viewer video { width: 100%; height: 100%; object-fit: contain; }
 .viewer-msg { position: absolute; top: calc(env(safe-area-inset-top) + 16px); left: 50%; transform: translateX(-50%); margin: 0;
   padding: 8px 14px; border-radius: 99px; background: #000b; color: #fff; width: max-content; max-width: min(90vw, 36ch); text-align: center; }
-.viewer-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; padding: 12px 22px calc(env(safe-area-inset-bottom) + 14px); }
+.viewer-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; padding: 12px 22px calc(env(safe-area-inset-bottom) + 14px); transition: opacity 250ms ease; }
+.viewer-bar.hidden { opacity: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .led span { animation: none !important; }
